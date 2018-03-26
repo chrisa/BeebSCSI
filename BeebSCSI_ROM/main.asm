@@ -116,7 +116,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
     EQUB copyright MOD 256                  ; Offset pointer to copyright string
     EQUB romVersion                         ; Version number
     EQUS "BeebSCSI Utilities", 0            ; Title string (null terminated)
-    EQUS "1.04"                             ; Version string (terminated by 0 before (c))
+    EQUS "1.05"                             ; Version string (terminated by 0 before (c))
 
     .copyright
         EQUS 0, "(C)"                       ; Mandatory start of title string
@@ -321,6 +321,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         JMP compareCommandText              ; Start the command comparison again for the next command
 
     .commandTable
+        ; General SCSI commands
         EQUS "SCSISTATUS"                   ; Command text to match on
         EQUB HI(scsiStatusCommand)          ; High byte of 16-bit vector address
         EQUB LO(scsiStatusCommand)          ; Low byte of 16-bit vector address
@@ -333,9 +334,14 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         EQUS "SCSIDSC"
         EQUB HI(scsiDscCommand)
         EQUB LO(scsiDscCommand)
+        ; VFS additional commands
         EQUS "FCODER"
         EQUB HI(fcoderCommand)
         EQUB LO(fcoderCommand)
+        ; FAT FS commands
+        EQUS "FATDIR"
+        EQUB HI(fatDirCommand)
+        EQUB LO(fatDirCommand)
         EQUB &FF                            ; End of table marker
 
     .invokeCommand
@@ -984,6 +990,33 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         RTS                                 ; All done - return
 
 \\ ------------------------------------------------------------------------------------------------
+\\ Function: fatDirCommand
+\\ Purpose: Process the *FATDIR command
+\\
+\\          Lists the directory contents of the current FAT working directory
+.fatDirCommand
+    \\ Determine the current filing system type (ADFS, VFS, unknown)
+    JSR checkFilingSystemType
+    BNE fatDirCommandUnsupportedFs              ; FS is not VFS or ADFS
+    PHA                                         ; Push the filing system number to the stack
+    JMP processFatDirCommand
+
+    .fatDirCommandUnsupportedFs
+        \\ Unsupported file system selected... Generate error condition
+        JMP errorOnlyAdfsVfsSupported
+
+    .processFatDirCommand
+        \\ This command requires shared workspace, claim it if necessary
+        \\ Note: This also sets workspaceAddress to point at our workspace
+        JSR claimSharedWorkspace
+
+        ; Actual code to do the work goes here
+
+    .fatDirCommandQuit
+        LDA #0                              ; Tell the MOS that the command has been serviced
+        RTS                                 ; All done - return
+
+\\ ------------------------------------------------------------------------------------------------
 \\ Function: str2intValid
 \\ Purpose: Ensures a string is a valid integer (ignores leading spaces) and converts
 \\          each valid character to its numeric equivalent.  Both EOL and SPACE counter
@@ -1174,17 +1207,18 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
     .displayTextTable
         ; 0 - stringStarHelp
         EQUB &0D
-        EQUS "BeebSCSI Utilities 1.04", &0D
+        EQUS "BeebSCSI Utilities 1.05", &0D
         EQUS "  BeebSCSI", &0D
         EQUB 0
         ; 1 - stringStarHelpExtended
         EQUB &0D
-        EQUS "BeebSCSI Utilities 1.04", &0D
+        EQUS "BeebSCSI Utilities 1.05", &0D
         EQUS "  SCSIDSC", &0D
         EQUS "  SCSISTATUS", &0D
         EQUS "  SCSITRACE  <0-255>", &0D
         EQUS "  SCSIJUKE   <0-255>", &0D
         EQUS "  FCODER", &0D
+        EQUS "  FATDIR", &0D
         EQUB 0
         ; 2 - stringLun
         EQUS "LUN ", 0

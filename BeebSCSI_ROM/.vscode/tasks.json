@@ -10,7 +10,7 @@
     ],
     "tasks": [
         {
-            "taskName": "main.ssd",
+            "taskName": "Build ROM Image",
             "problemMatcher": {
                 "owner": "6502",
                 "fileLocation": [
@@ -26,15 +26,36 @@
                 }
             },
             "args": [
-                "BeebAsm.exe -v -i main.asm -do main.ssd"
+                "BeebAsm.exe -v -i main.asm -o BSRom.rom"
             ],
             "isBuildCommand": true
         },
         {
-            "taskName": "Run 'main.ssd' in Emulator",
+            "taskName": "Build DFS Disk Image",
+            "problemMatcher": {
+                "owner": "6502",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceRoot}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "severity": 3,
+                    "message": 4
+                }
+            },
+            "args": [
+                "BeebAsm.exe -v -i main.asm -do BSRom.ssd"
+            ],
+            "isTestCommand": true
+        },
+        {
+            "taskName": "Run 'BSRom.ssd' in Emulator",
             "isTestCommand": true,
             "args": [
-                "BeebEm.exe main.ssd"
+                "BeebEm.exe BSRom.ssd"
             ]
         }
     ]
