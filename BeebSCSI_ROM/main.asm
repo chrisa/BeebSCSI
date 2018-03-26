@@ -3,7 +3,7 @@
 \
 \   Main BeebSCSI_ROM functions
 \   BeebSCSI_ROM - BeebSCSI Utility ROM
-\   Copyright (C) 2017 Simon Inns
+\   Copyright (C) 2018 Simon Inns
 \
 \   This file is part of BeebSCSI_ROM.
 \
@@ -37,25 +37,27 @@ osfile = &FFDD                              ; OS call, file system
 \\ romFlags points to the base of the ROM flag byte (needs to be offset by the ROM number)
 romFlags = &DF0                             ; The base of the ROM workspace (&DF0 + ROM number <0-15>)
 
-\\ OS temp zero page allocations (uses ZP &A8 to &AF)
-workspaceAddress = &A8                      ; Zero page storage location for 16-bit workspace address
-workspaceAddressHi = &A9                    ; &A8-&A9 should not be used for anything else
+\\ OS Zero page allocations used during ROM execution (uses ZP &A8 to &AF)
+wsPage0AddressLo = &A8                      ; Zero page storage location for 16-bit workspace address (page 0)
+wsPage0AddressHi = &A9                      ; &A8-&A9 should not be used for anything else
+wsPage1AddressLo = &AA                      ; Zero page storage location for 16-bit workspace address (page 1)
+wsPage1AddressHi = &AB                      ; &AA-&AB should not be used for anything else
 
 \\ Used by the parameter parsing function
-iIntegerLo = &AA                            ; Parameter parsing integer low byte
-iIntegerHi = &AB                            ; Parameter parsing integer high byte
-iCounter = &AC                              ; Parameter parsing counter
+iIntegerLo = &AC                            ; Parameter parsing integer low byte
+iIntegerHi = &AD                            ; Parameter parsing integer high byte
+iCounter = &AE                              ; Parameter parsing counter
 
 \\ Used by decimal number print function
-iNumber = &AA
-iStore = &AB
+iNumber = &AC
+iStore = &AD
 
 \\ Used by the string display function
-stringTableAddr = &AA                       ; String table pointer (low byte)
-stringTableAddrHi = &AB                     ; String table pointer (high byte)
-stringNumber = &AC                          ; String number for text display function
+stringTableAddr = &AC                       ; String table pointer (low byte)
+stringTableAddrHi = &AD                     ; String table pointer (high byte)
+stringNumber = &AE                          ; String number for text display function
 
-bitmaskPattern = &AD                        ; Bit mask used by * command processing
+bitmaskPattern = &AE                        ; Bit mask used by * command processing
 
 \\ String identification constants
 stringStarHelp                  = 00
@@ -244,10 +246,10 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
     .serviceCall01BBC
         LDA #&0E                                ; &0E00 is the workspace location for shared low memory
         STA romFlags, X
-        CPY #&0E + 1                            ; Check if one page of shared low memory is available
+        CPY #&0E + 2                            ; Check if two pages of shared low memory is available
         BCS serviceCall01Exit                   ; There is already enough shared low memory available, just quit
 
-        LDY #&0E + 1                            ; Request a page of shared low memory (as none was available)
+        LDY #&0E + 2                            ; Request two pages of shared low memory (as none was available)
 
     .serviceCall01Exit
         LDA #&01                                ; Restore service event in A
@@ -267,7 +269,8 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         TYA                                 ; Copy HAZEL start address to A
         STA romFlags, X                     ; Store the location of our workspace
 
-        INY                                 ; Claim a page
+        INY                                 ; Claim first page
+        INY                                 ; Claim second page
 
         \\ At this point romFlags is either not &DC (pointing at our shared workspace) or
         \\ equal to &DC (there is no shared workspace available).
@@ -279,8 +282,9 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 \\ Function: serviceCall24 (event &24)
 \\ Purpose: State how much HAZEL high RAM private space is needed - Master only
 .serviceCall24
-    \\ Claim 1 page (256 bytes) of HAZEL
-    DEY                                 ; Claim a page
+    \\ Claim 2 pages (512 bytes) of HAZEL
+    DEY                                 ; Claim first page
+    DEY                                 ; Claim second page
 
     LDA #&24                            ; Restore service event in A
     RTS                                 ; Exit
@@ -347,12 +351,12 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
     .invokeCommand
         CMP #&FF                            ; Check for end of table marker
         BEQ passCommandOn                   ; No commands matched, pass on to next ROM
-        STA workspaceAddressHi              ; A contains the high byte of the command vector
+        STA wsPage0AddressHi                ; A contains the high byte of the command vector
         INX                                 ; Point X at the low byte of the command vector
         LDA commandTable, X                 ; Get the low byte of the command vector
-        STA workspaceAddress                ; A contains the low byte of the command vector
+        STA wsPage0AddressLo                ; A contains the low byte of the command vector
         PLA                                 ; Pull the stack - A now contains the original Y (command pointer)
-        JMP (workspaceAddress)              ; Jump to the command processing vector
+        JMP (wsPage0AddressLo)              ; Jump to the command processing vector
 
     \\ Pass the command on to the next ROM for processing
     .passCommandOn
@@ -366,7 +370,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 \\ Purpose: Claims shared workspace ready for use (if required)
 .claimSharedWorkspace
     JSR findSharedWorkspace             ; Get the workspace address
-    LDA workspaceAddressHi              ; A = workspace address high byte
+    LDA wsPage0AddressHi                ; A = workspace address high byte
     BMI claimSharedWorkspaceExit        ; The Workspace is in private high memory, exit
     LDA #&8F                            ; OSBYTE &8F = Generate paged ROM service call
     LDX #&0A                            ; service &0A - Claim absolute workspace
@@ -378,13 +382,18 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
 \\ ------------------------------------------------------------------------------------------------
 \\ Function: findSharedWorkspace
-\\ Purpose: Places the address of shared workspace in ZP workspaceAddress
+\\ Purpose: Places the address of shared workspace in ZP wsPage0AddressLo
 .findSharedWorkspace
     LDX &F4
     LDA romFlags, X
-    STA workspaceAddressHi              ; Get high byte of workspace pointer
+    STA wsPage0AddressHi                ; Store high byte of page 0 workspace pointer
+    TAX
+    INX                                 ; Point at the next page of workspace
+    TXA
+    STA wsPage1AddressHi                ; Store high byte of page 1 workspace pointer
     LDA #0
-    STA workspaceAddress                ; Set workspace address low byte to &00
+    STA wsPage0AddressLo                ; Set workspace page 0 address low byte to &00
+    STA wsPage1AddressLo                ; Set workspace page 1 address low byte to &00
 
     .findSharedWorkspaceExit
         RTS                             ; Exit
@@ -426,7 +435,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
     .processscsiDscCommand
         \\ This command requires shared workspace, claim it if necessary
-        \\ Note: This also sets workspaceAddress to point at our workspace
+        \\ Note: This also sets wsPage0AddressLo to point at our workspace
         JSR claimSharedWorkspace
 
         \\ Here we send a MODESENSE SCSI command and receive a 22 byte descriptor
@@ -435,7 +444,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         LDY #&00                                ; Y is index to the control block
         .scsiDscControlBlockLoop
             LDA scsiModeSenseCommandBlock, X    ; Get a byte from the control block data
-            STA (workspaceAddress), Y           ; Store the byte in the control block
+            STA (wsPage0AddressLo), Y           ; Store the byte in the control block
             INX
             INY
             CPY #16                             ; End of control block data?
@@ -444,15 +453,15 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             \\ Copy the returned data address into the control block
             LDY #&01                            ; Byte pointer
             LDA #&0F                            ; LSB of returned data block
-            STA (workspaceAddress), Y
+            STA (wsPage0AddressLo), Y
             INY
-            LDA workspaceAddressHi              ; MSB of returned data block
-            STA (workspaceAddress), Y
+            LDA wsPage0AddressHi                ; MSB of returned data block
+            STA (wsPage0AddressLo), Y
 
         \\ Point X and Y to the command block
-        LDA workspaceAddress                    ; Get low byte of address
+        LDA wsPage0AddressLo                    ; Get low byte of address
         TAX
-        LDA workspaceAddressHi                  ; Get high byte of address
+        LDA wsPage0AddressHi                    ; Get high byte of address
         TAY
 
         PLA                                     ; Get the current filing system number from the stack
@@ -473,7 +482,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         \\ Ensure the SCSI command successfully executed
         .scsiDscCheckResult
             LDY #&00
-            LDA (workspaceAddress), Y               ; Get byte 0 of the command block
+            LDA (wsPage0AddressLo), Y               ; Get byte 0 of the command block
             \\CMP #0                                ; Is it 0? (ok)
             BEQ scsiDscPrettyPrint
 
@@ -489,37 +498,37 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             LDA #stringDscHeads
             JSR displayText
             LDY #15+&0F                             ; Byte 15 = number of heads
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
 
             LDA #stringDscCylinders
             JSR displayText
             LDY #13+&0F                             ; Byte 13 = cylinders (MSB)
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
             LDY #14+&0F                             ; Byte 14 = cylinders (LSB)
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
 
             LDA #stringDscStep
             JSR displayText
             LDY #21+&0F                             ; Byte 21 = number of steps
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
 
             LDA #stringDscRwcc
             JSR displayText
             LDY #16+&0F                             ; Byte 16 = rwcc (MSB)
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
             LDY #17+&0F                             ; Byte 17 = rwcc (LSB)
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
 
             LDA #stringDscLandingZone
             JSR displayText
             LDY #20+&0F                             ; Byte 20 = landing zone
-            LDA (workspaceAddress), Y
+            LDA (wsPage0AddressLo), Y
             JSR printHexNumber
 
             LDA #&0D
@@ -558,7 +567,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
     .processscsiStatusCommand
         \\ This command requires shared workspace, claim it if necessary
-        \\ Note: This also sets workspaceAddress to point at our workspace
+        \\ Note: This also sets wsPage0AddressLo to point at our workspace
         JSR claimSharedWorkspace
 
         \\ Here we send a BSSENSE SCSI command and receive a 8 byte status descriptor
@@ -567,7 +576,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         LDY #&00                                ; Y is index to the control block
         .scsiStatusControlBlockLoop
             LDA scsiBSSenseCommandBlock, X      ; Get a byte from the control block data
-            STA (workspaceAddress), Y           ; Store the byte in the control block
+            STA (wsPage0AddressLo), Y           ; Store the byte in the control block
             INX
             INY
             CPY #16                             ; End of control block data?
@@ -576,15 +585,15 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             \\ Copy the returned data address into the control block
             LDY #&01                            ; Byte pointer
             LDA #&0F                            ; LSB of returned data block
-            STA (workspaceAddress), Y
+            STA (wsPage0AddressLo), Y
             INY
-            LDA workspaceAddressHi              ; MSB of returned data block
-            STA (workspaceAddress), Y
+            LDA wsPage0AddressHi                ; MSB of returned data block
+            STA (wsPage0AddressLo), Y
 
         \\ Point to the command block
-        LDA workspaceAddress                    ; Get low byte of address
+        LDA wsPage0AddressLo                    ; Get low byte of address
         TAX
-        LDA workspaceAddressHi                  ; Get high byte of address
+        LDA wsPage0AddressHi                    ; Get high byte of address
         TAY
         
         PLA                                     ; Get the current filing system number from the stack
@@ -605,7 +614,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         \\ Ensure the SCSI command successfully executed
         .scsiStatusCheckResult
             LDY #&00
-            LDA (workspaceAddress), Y               ; Get byte 0 of the command block
+            LDA (wsPage0AddressLo), Y               ; Get byte 0 of the command block
             \\CMP #0                                ; Is it 0? (ok)
             BEQ scsiStatusDisplayResult
 
@@ -627,7 +636,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
                 JSR printHexNumber                      ; Output the LUN number
 
                 LDY #&0F                                ; Point to the result block
-                LDA (workspaceAddress), Y               ; Get the LUN status byte
+                LDA (wsPage0AddressLo), Y               ; Get the LUN status byte
                 AND bitmaskPattern                      ; Test drive status (AND with bitmask)
                 BEQ scsiStatusPrettyPrintStopped
                 LDA #stringIsStarted                    ; Specify the string to display
@@ -649,14 +658,14 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
                 LDA #stringCurrentJuke                  ; Specify the string to display
                 JSR displayText                         ; Display the text
                 LDY #&10                                ; Point to the result block
-                LDA (workspaceAddress), Y               ; Get the LUN status byte
+                LDA (wsPage0AddressLo), Y               ; Get the LUN status byte
                 JSR printDecNumber                      ; Output the jukebox number (as decimal)
                 LDA #&0D
                 JSR osasci                              ; Print a CR
 
                 \\ Show the current emulation mode
                 LDY #&11                                ; Point to the result block
-                LDA (workspaceAddress), Y               ; Get the LUN status byte
+                LDA (wsPage0AddressLo), Y               ; Get the LUN status byte
                 BNE scsiStatusLvdosMode
                 LDA #stringFixedEmulationMode
                 JMP outputEmulationMode
@@ -671,12 +680,12 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
                 LDA #stringFirmwareVersion
                 JSR displayText
                 LDY #&12                                ; Major revision number
-                LDA (workspaceAddress), Y 
+                LDA (wsPage0AddressLo), Y 
                 JSR printDecNumber
                 LDA #'.'
                 JSR osasci
                 LDY #&13                                ; Major revision number
-                LDA (workspaceAddress), Y 
+                LDA (wsPage0AddressLo), Y 
                 JSR printDecNumber
                 LDA #&0D
                 JSR osasci
@@ -860,7 +869,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
     .processscsiJukeCommand
         \\ This command requires shared workspace, claim it if necessary
-        \\ Note: This also sets workspaceAddress to point at our workspace
+        \\ Note: This also sets wsPage0AddressLo to point at our workspace
         JSR claimSharedWorkspace
 
         \\ Here we send a BSSELECT SCSI command and send a 8 byte select descriptor
@@ -869,7 +878,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         LDY #&00                                ; Y is index to the control block
         .scsiJukeControlBlockLoop
             LDA scsiBSSelectCommandBlock, X     ; Get a byte from the control block data
-            STA (workspaceAddress), Y           ; Store the byte in the control block
+            STA (wsPage0AddressLo), Y           ; Store the byte in the control block
             INX
             INY
             CPY #16                             ; End of control block data?
@@ -878,28 +887,28 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             \\ Copy the data (to send) address into the control block
             LDY #&01                            ; Byte pointer
             LDA #&0F                            ; LSB of data block
-            STA (workspaceAddress), Y
+            STA (wsPage0AddressLo), Y
             INY
-            LDA workspaceAddressHi              ; MSB of data block
-            STA (workspaceAddress), Y
+            LDA wsPage0AddressHi                ; MSB of data block
+            STA (wsPage0AddressLo), Y
 
         \\ Set up the descriptor block
         LDY #&0F                                ; Start of the data block
         LDA iIntegerLo                          ; The requested jukebox number
-        STA (workspaceAddress), Y : INY         ; Byte &00
+        STA (wsPage0AddressLo), Y : INY         ; Byte &00
         LDA #&00                                ; Send &00 for the next 7 bytes
-        STA (workspaceAddress), Y : INY
-        STA (workspaceAddress), Y : INY
-        STA (workspaceAddress), Y : INY
-        STA (workspaceAddress), Y : INY
-        STA (workspaceAddress), Y : INY
-        STA (workspaceAddress), Y : INY
-        STA (workspaceAddress), Y : INY
+        STA (wsPage0AddressLo), Y : INY
+        STA (wsPage0AddressLo), Y : INY
+        STA (wsPage0AddressLo), Y : INY
+        STA (wsPage0AddressLo), Y : INY
+        STA (wsPage0AddressLo), Y : INY
+        STA (wsPage0AddressLo), Y : INY
+        STA (wsPage0AddressLo), Y : INY
 
         \\ Point to the command block
-        LDA workspaceAddress                    ; Get low byte of address
+        LDA wsPage0AddressLo                    ; Get low byte of address
         TAX
-        LDA workspaceAddressHi                  ; Get high byte of address
+        LDA wsPage0AddressHi                    ; Get high byte of address
         TAY
         
         PLA                                     ; Get the current filing system number from the stack
@@ -921,7 +930,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         \\ Ensure the SCSI command successfully executed
         .scsiJukeCheckResult
             LDY #&00
-            LDA (workspaceAddress), Y               ; Get byte 0 of the command block
+            LDA (wsPage0AddressLo), Y               ; Get byte 0 of the command block
             \\CMP #0                                ; Is it 0? (ok)
             BEQ scsiJukeQuit
 
@@ -960,12 +969,12 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
     .processfcoderCommand
         \\ This command requires shared workspace, claim it if necessary
-        \\ Note: This also sets workspaceAddress to point at our workspace
+        \\ Note: This also sets wsPage0AddressLo to point at our workspace
         JSR claimSharedWorkspace
 
-        LDA workspaceAddress
+        LDA wsPage0AddressLo
         TAX
-        LDA workspaceAddressHi
+        LDA wsPage0AddressHi
         TAY
         LDA #&64
         JSR osword                          ; Get F-Code response
@@ -976,7 +985,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         LDY #&00                            ; Y is our byte index = 0
 
         .showfcodeoutputLoop
-            LDA (workspaceAddress), Y       ; Get a byte of the response
+            LDA (wsPage0AddressLo), Y       ; Get a byte of the response
             JSR osasci                      ; Display the byte
             CMP #&0D                        ; CR?
             BEQ fcoderQuit
@@ -1007,14 +1016,105 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
     .processFatDirCommand
         \\ This command requires shared workspace, claim it if necessary
-        \\ Note: This also sets workspaceAddress to point at our workspace
+        \\ Note: This also sets wsPage0AddressLo to point at our workspace
         JSR claimSharedWorkspace
 
-        ; Actual code to do the work goes here
+        \\ Here we send a BSFATINFO SCSI command and receive a 256 byte block of data
+        \\ containing the following information:
+        \\
+        \\ Byte 0: Status of file (0 = does not exist, 1 = file exists, 2 = directory)
+        \\ Byte 1 – 4: Size of file in number of bytes (32-bit)
+        \\ Byte 5 – 126: Reserved (0)
+        \\ Byte 127- 255: File name string terminated with 0x00 (NULL)
+        \\
+        \\ This requires two pages of workspace.  In the low page we store the 
+        \\ control block data (and the response), in the high page we store the
+        \\ returned SCSI data block
+        \\
+        \\ Note: Is it possible to use zero page for the control block?  Then we would
+        \\ only require one page of workspace instead of two??????????????????????????
+        LDX #&00                                ; X is index to the control block data
+        LDY #&00                                ; Y is index to the control block
+        .fatDirControlBlockLoop
+            LDA fatDirCommandBlock, X           ; Get a byte from the control block data
+            STA (wsPage0AddressLo), Y           ; Store the byte in the control block
+            INX
+            INY
+            CPY #16                             ; End of control block data?
+            BNE fatDirControlBlockLoop
 
-    .fatDirCommandQuit
-        LDA #0                              ; Tell the MOS that the command has been serviced
-        RTS                                 ; All done - return
+            \\ Copy the returned data address (pointer to page 1 of the workspace) into the control block
+            LDY #&01                            ; Byte pointer
+            LDA #&0F                            ; LSB of data block
+            STA (wsPage1AddressLo), Y
+            INY
+            LDA wsPage1AddressHi                ; MSB of data block
+            STA (wsPage1AddressLo), Y
+
+        \\ Point X and Y to the control block
+        LDA wsPage0AddressLo                    ; Get low byte of address
+        TAX
+        LDA wsPage0AddressHi                    ; Get high byte of address
+        TAY
+
+        PLA                                     ; Get the current filing system number from the stack
+        CMP #&0A                                ; Is the current file system VFS?
+        BEQ fatDirSendToVFS                     ; Send OSWORD to VFS
+
+        \\ File system is ADFS.  Use OSWORD &72
+        LDA #&72                                ; Execute OSWORD &72 (ADFS)
+        JSR osword
+        JSR claimSharedWorkspace                ; Reclaim workspace after OSWORD call
+        JMP fatDirCheckResult
+
+        .fatDirSendToVFS
+            \\ File system is VFS.  Use OSWORD &62
+            LDA #&62                                ; Execute OSWORD &62 (VFS)
+            JSR osword
+
+        \\ Ensure the SCSI command successfully executed
+        .fatDirCheckResult
+            LDY #&00
+            LDA (wsPage0AddressLo), Y               ; Get byte 0 of the command block
+            \\CMP #0                                ; Is it 0? (ok)
+            BEQ fatDirPrintFilename
+
+            \\ Show SCSI error
+            JMP errorScsi
+
+        \\ Print the directory entry's file name.  This string starts at byte 128 in
+        \\ the upper page of ROM workspace
+        .fatDirPrintFilename
+            LDY #&80                            ; Y is our byte index = 128
+
+            .fatDirOutputLoop
+                LDA (wsPage1AddressLo), Y       ; Get a byte of the response
+                JSR osasci                      ; Display the byte
+                CMP #&00                        ; NULL terminator?
+                BEQ fatDirPrintCR
+                INY                             ; Next byte
+                TYA
+                CMP #0                          ; No more data?
+                BNE fatDirOutputLoop
+
+        .fatDirPrintCR
+            LDA #&0D
+            JSR osasci                              ; Print CR
+
+        .fatDirCommandQuit
+            LDA #0                                  ; Tell the MOS that the command has been serviced
+            RTS                                     ; All done - return
+
+        .fatDirCommandBlock
+            \\ 15 byte control block for OSWORD &72 - SCSI BSFATINFO command
+            EQUB &00            ; Controller number
+            EQUD &FFFF0000      ; Transfer address
+            EQUB &D3            ; SCSI command group and command
+            EQUW &0000          ; LBA (LSB, 2nd byte)
+            EQUB &00            ; LBA (MSB)
+            EQUB &01            ; Sector count (request 1 block of data)
+            EQUB &00            ; Always 0
+            EQUD &00000000      ; Data length
 
 \\ ------------------------------------------------------------------------------------------------
 \\ Function: str2intValid
