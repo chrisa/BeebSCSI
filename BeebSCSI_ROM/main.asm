@@ -185,8 +185,8 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
     \\ Check if there are additional characters after *HELP
     LDA (&F2), Y                            ; Get the next character byte
-    CMP #13                                 ; is it ASCII 13?
-    BNE checkAdditionalHelpText             ; Yes, so go to the additional help text check
+    CMP #&0D                                ; is it (CR) ASCII 0x0D?
+    BNE checkAdditionalHelpText             ; No, so go to the additional help text check
     
     \\ Print the ROM name (non-extended help)
     .displayHelp
@@ -246,7 +246,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
     .serviceCall01BBC
         LDA #&0E                                ; &0E00 is the workspace location for shared low memory
         STA romFlags, X
-        CPY #&0E + 2                            ; Check if two pages of shared low memory is available
+        CPY #&0E + 2                            ; Check if two pages of shared low memory are available
         BCS serviceCall01Exit                   ; There is already enough shared low memory available, just quit
 
         LDY #&0E + 2                            ; Request two pages of shared low memory (as none was available)
@@ -382,14 +382,14 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
 \\ ------------------------------------------------------------------------------------------------
 \\ Function: findSharedWorkspace
-\\ Purpose: Places the address of shared workspace in ZP wsPage0AddressLo
+\\ Purpose: Places the address of shared workspace in ZP wsPage0AddressLo and wsPage1AddressLo
 .findSharedWorkspace
     LDX &F4
     LDA romFlags, X
     STA wsPage0AddressHi                ; Store high byte of page 0 workspace pointer
-    TAX
-    INX                                 ; Point at the next page of workspace
-    TXA
+    TAY
+    INY                                 ; Point at the next page of workspace
+    TYA
     STA wsPage1AddressHi                ; Store high byte of page 1 workspace pointer
     LDA #0
     STA wsPage0AddressLo                ; Set workspace page 0 address low byte to &00
@@ -1045,11 +1045,11 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
 
             \\ Copy the returned data address (pointer to page 1 of the workspace) into the control block
             LDY #&01                            ; Byte pointer
-            LDA #&0F                            ; LSB of data block
-            STA (wsPage1AddressLo), Y
+            LDA wsPage1AddressLo                ; LSB of data block
+            STA (wsPage0AddressLo), Y
             INY
             LDA wsPage1AddressHi                ; MSB of data block
-            STA (wsPage1AddressLo), Y
+            STA (wsPage0AddressLo), Y
 
         \\ Point X and Y to the control block
         LDA wsPage0AddressLo                    ; Get low byte of address
@@ -1088,7 +1088,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             \\ TODO: Check directory entry type return value
             \\ TODO: CALL errorTransferDirectoryEmpty IF FIRST ENTRY IS NOT FOUND
 
-            LDY #&80                            ; Y is our byte index = 128
+            LDY #&7F                            ; Y is our byte index = 127
 
             .fatDirOutputLoop
                 LDA (wsPage1AddressLo), Y       ; Get a byte of the response
@@ -1097,7 +1097,7 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
                 BEQ fatDirPrintCR
                 INY                             ; Next byte
                 TYA
-                CMP #0                          ; No more data?
+                CMP #0                          ; No more data (pointer exceeded 255)?
                 BNE fatDirOutputLoop
 
         .fatDirPrintCR
