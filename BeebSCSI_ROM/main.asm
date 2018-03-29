@@ -1085,26 +1085,71 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         \\ Print the directory entry's file name.  This string starts at byte 128 in
         \\ the upper page of ROM workspace
         .fatDirPrintDirectoryEntry
-            \\ TODO: Check directory entry type return value
-            \\ TODO: CALL errorTransferDirectoryEmpty IF FIRST ENTRY IS NOT FOUND
 
-            LDY #&7F                            ; Y is our byte index = 127
+            \\ Check the directory entry type.  This can be one of:
+            \\ 0 = directory entry does not exist
+            \\ 1 = directory entry is a file
+            \\ 2 = directory entry is a directory
+            .fatDirCheckEntryType
+                LDY #&00
+                LDA (wsPage1AddressLo), Y       ; Get byte 0 of the response
+                CMP #0
+                BEQ fatDirEntryDoesNotExist    ; type = 0 = directory entry does not exist
+                CMP #1
+                BEQ fatDirEntryIsFile          ; type = 1 = directory entry is a file
+                CMP #2
+                BEQ fatDirEntryIsDirectory     ; type = 2 = directory entry is a directory
 
-            .fatDirOutputLoop
-                LDA (wsPage1AddressLo), Y       ; Get a byte of the response
-                JSR osasci                      ; Display the byte
-                CMP #&00                        ; NULL terminator?
-                BEQ fatDirPrintCR
-                INY                             ; Next byte
-                TYA
-                CMP #0                          ; No more data (pointer exceeded 255)?
-                BNE fatDirOutputLoop
+                \\ Directory entry type is invalid - show SCSI error
+                JMP errorScsi
 
-        .fatDirPrintCR
-            LDA #&0D
-            JSR osasci                              ; Print CR
+            \\ Entry is a file.  Prefix entry name with "(F)"
+            .fatDirEntryIsFile
+                LDA #&28        ; "("
+                JSR osasci
+                LDA #&46        ; "F"
+                JSR osasci
+                LDA #&29        ; ")"
+                JSR osasci
+                LDA #&20        ; " "
+                JSR osasci
+                JMP fatDirPrintEntryName
 
-            \\ TODO: Loop through all available directory entries
+            \\ Entry is a directory.  Prefix entry name with "(D)"
+            .fatDirEntryIsDirectory
+                LDA #&28        ; "("
+                JSR osasci
+                LDA #&44        ; "D"
+                JSR osasci
+                LDA #&29        ; ")"
+                JSR osasci
+                LDA #&20        ; " "
+                JSR osasci
+                JMP fatDirPrintEntryName
+
+            \\ No more entries exist.  Just quit
+            .fatDirEntryDoesNotExist
+                JMP fatDirCommandQuit
+
+            .fatDirPrintEntryName
+                LDY #&7F                            ; Y is our byte index = 127
+
+                .fatDirEntryNameOutputLoop
+                    LDA (wsPage1AddressLo), Y       ; Get a byte of the response
+                    JSR osasci                      ; Display the byte
+                    CMP #&00                        ; NULL terminator?
+                    BEQ fatDirPrintCR
+                    INY                             ; Next byte
+                    TYA
+                    CMP #0                          ; No more data (pointer exceeded 255)?
+                    BNE fatDirEntryNameOutputLoop
+
+            .fatDirPrintCR
+                LDA #&0D
+                JSR osasci                              ; Print CR
+
+            \\ Repeat for next directory entry
+            \\ TODO - call SCSI command again with incrementing directory entry counter
 
         .fatDirCommandQuit
             LDA #0                                  ; Tell the MOS that the command has been serviced
@@ -1318,7 +1363,9 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         ; 1 - stringStarHelpExtended
         EQUB &0D
         \\    0123456789012345678901234567890123456789
-        EQUS "BeebSCSI Utilities 1.05", &0D
+        EQUS "BeebSCSI Utilities 1.05 beta", &0D
+        EQUS "GPLv3 Open-source - www.domesday86.com", &0D
+        EQUB &0D
         EQUS "  SCSIDSC           - SCSI descriptor", &0D
         EQUS "  SCSISTATUS        - BeebSCSI status", &0D
         EQUS "  SCSITRACE <0-255> - Set trace level", &0D
