@@ -57,7 +57,7 @@ stringTableAddr = &AC                       ; String table pointer (low byte)
 stringTableAddrHi = &AD                     ; String table pointer (high byte)
 stringNumber = &AE                          ; String number for text display function
 
-bitmaskPattern = &AE                        ; Bit mask used by * command processing
+bitmaskPattern = &AF                        ; Bit mask used by * command processing
 
 \\ String identification constants
 stringStarHelp                  = 00
@@ -102,8 +102,8 @@ SPACE = &20                                 ; Parameter parsing SPACE character 
 \\ Set bits 7 and 1 = %1000 0010 = &82
 romTypeByte = &82
 
-\\ ROM version number
-romVersion = &04
+\\ ROM version number (Set to minor version number)
+romVersion = &05
 
 \\ Start of the actual code
 ORG &8000                                   ; Assemble at &8000
@@ -1077,14 +1077,17 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             LDY #&00
             LDA (wsPage0AddressLo), Y               ; Get byte 0 of the command block
             \\CMP #0                                ; Is it 0? (ok)
-            BEQ fatDirPrintFilename
+            BEQ fatDirPrintDirectoryEntry
 
             \\ Show SCSI error
             JMP errorScsi
 
         \\ Print the directory entry's file name.  This string starts at byte 128 in
         \\ the upper page of ROM workspace
-        .fatDirPrintFilename
+        .fatDirPrintDirectoryEntry
+            \\ TODO: Check directory entry type return value
+            \\ TODO: CALL errorTransferDirectoryEmpty IF FIRST ENTRY IS NOT FOUND
+
             LDY #&80                            ; Y is our byte index = 128
 
             .fatDirOutputLoop
@@ -1100,6 +1103,8 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         .fatDirPrintCR
             LDA #&0D
             JSR osasci                              ; Print CR
+
+            \\ TODO: Loop through all available directory entries
 
         .fatDirCommandQuit
             LDA #0                                  ; Tell the MOS that the command has been serviced
@@ -1312,13 +1317,14 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
         EQUB 0
         ; 1 - stringStarHelpExtended
         EQUB &0D
+        \\    0123456789012345678901234567890123456789
         EQUS "BeebSCSI Utilities 1.05", &0D
-        EQUS "  SCSIDSC", &0D
-        EQUS "  SCSISTATUS", &0D
-        EQUS "  SCSITRACE  <0-255>", &0D
-        EQUS "  SCSIJUKE   <0-255>", &0D
-        EQUS "  FCODER", &0D
-        EQUS "  FATDIR", &0D
+        EQUS "  SCSIDSC           - SCSI descriptor", &0D
+        EQUS "  SCSISTATUS        - BeebSCSI status", &0D
+        EQUS "  SCSITRACE <0-255> - Set trace level", &0D
+        EQUS "  SCSIJUKE  <0-255> - Set jukebox", &0D
+        EQUS "  FCODER            - FCODE Response", &0D
+        EQUS "  FATDIR            - Display FAT dir", &0D
         EQUB 0
         ; 2 - stringLun
         EQUS "LUN ", 0
@@ -1445,6 +1451,22 @@ GUARD &C000                                 ; Do not exceed 16 Kbytes
             EQUB 0                      ; BRK instruction
             EQUB &C7                    ; Error Number &C7 (Disc error)
             EQUS "Juke failed - did you *BYE?", 0
+            EQUB &FF
+
+    .errorTransferDirectoryEmpty
+        LDX #&FF
+        .errorTransferDirectoryEmptyLoop
+        INX                                     ; Next byte
+        LDA errorTransferDirectoryEmptyText, X  ; Fetch a byte of data
+        STA &100, X                             ; Store at the bottom of the stack
+        CMP #&FF                                ; Terminator byte?
+        BNE errorTransferDirectoryEmptyLoop     ; No, loop again
+        JMP &100                                ; Execute BRK (outside of ROM)
+        BRK 
+        .errorTransferDirectoryEmptyText
+            EQUB 0                      ; BRK instruction
+            EQUB &C7                    ; Error Number &C7 (Disc error)
+            EQUS "Transfer directory is empty.", 0
             EQUB &FF
 
 \\ End of the actual code
