@@ -32,6 +32,12 @@
 // The removable mode emulates the Laser Video Disc Player (LV-DOS) for Domesday
 extern uint8_t emulationMode;
 
+// Define the major and minor firmware version number returned
+// by the BSSENSE command
+#define FIRMWARE_MAJOR		0x02
+#define FIRMWARE_MINOR		0x05
+#define FIRMWARE_STRING		"V002.005"
+
 // SCSI emulation bus states
 #define SCSI_BUSFREE	0
 #define SCSI_COMMAND	1

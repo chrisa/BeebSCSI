@@ -31,6 +31,7 @@
 
 #include "debug.h"
 #include "uart.h"
+#include "scsi.h"
 
 // Define default debug output flags (all debug off)
 // Note: these are modified by the configure interrupt, so they all
@@ -52,6 +53,20 @@
 	volatile bool debugFlag_scsiState = false;
 	volatile bool debugFlag_fatfs = false;
 #endif
+
+void debugInitialise(void)
+{
+        // On a cold-start we always output debug information (ignoring the setting of the
+	// debug flags) - as this is useful for initial board testing
+	debugString_P(PSTR("\r\n\r\nBeebSCSI - Acorn SCSI-1 Emulation\r\n\r\n"));
+	debugString_P(PSTR("(c)2018 Simon Inns\r\n"));
+	debugString_P(PSTR("https://www.domesday86.com\r\n"));
+	debugString_P(PSTR("Open-source GPLv3 firmware\r\n"));
+	debugString_P(PSTR("\r\n"));
+	debugString_P(PSTR("Firmware: "));
+	debugString_P(PSTR(FIRMWARE_STRING));
+	debugString_P(PSTR("\r\n"));
+}
 
 // This function outputs a string stored in program space to the UART
 // It should be called with a statement such as:

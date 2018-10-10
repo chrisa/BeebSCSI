@@ -36,6 +36,7 @@ extern volatile bool debugFlag_scsiState;
 extern volatile bool debugFlag_fatfs;
 
 // Function prototypes
+void debugInitialise(void);
 void debugString_P(const char *addr);
 void debugString(char *string);
 void debugStringInt8Hex_P(const char *addr, uint8_t integerValue, bool newLine);

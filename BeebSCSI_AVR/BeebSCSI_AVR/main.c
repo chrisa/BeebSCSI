@@ -78,6 +78,9 @@ int main(void)
 	// Initialise the UART serial transceiver
 	uartInitialise();
 
+        // Initialise the debug subsystem
+        debugInitialise();
+
 	// Initialise the host adapter interface
 	hostadapterInitialise();
 

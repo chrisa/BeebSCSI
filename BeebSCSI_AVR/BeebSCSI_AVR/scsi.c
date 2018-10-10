@@ -41,12 +41,6 @@
 #include "scsi.h"
 #include "fcode.h"
 
-// Define the major and minor firmware version number returned
-// by the BSSENSE command
-#define FIRMWARE_MAJOR		0x02
-#define FIRMWARE_MINOR		0x04
-#define FIRMWARE_STRING		"V002.004"
-
 // Global for the emulation mode (fixed or removable drive)
 // Note: The fixed mode emulates SCSI-1 compliant hard drives for the Beeb
 // The removable mode emulates the Laser Video Disc Player (LV-DOS) for Domesday
@@ -87,18 +81,6 @@ uint8_t scsiState;
 void scsiInitialise(void)
 {
 	uint8_t lunNumber;
-	
-	// On a cold-start we always output debug information (ignoring the setting of the
-	// debug flags) - as this is useful for initial board testing
-	
-	debugString_P(PSTR("\r\n\r\nBeebSCSI - Acorn SCSI-1 Emulation\r\n\r\n"));
-	debugString_P(PSTR("(c)2018 Simon Inns\r\n"));
-	debugString_P(PSTR("https://www.domesday86.com\r\n"));
-	debugString_P(PSTR("Open-source GPLv3 firmware\r\n"));
-	debugString_P(PSTR("\r\n"));
-	debugString_P(PSTR("Firmware: "));
-	debugString_P(PSTR(FIRMWARE_STRING));
-	debugString_P(PSTR("\r\n"));
 	
 	// Determine the emulation mode (fixed or LV-DOS)
 	if (hostadapterConnectedToExternalBus())
