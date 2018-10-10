@@ -4,9 +4,10 @@ DEVICE  = at90usb1287
 DEFINES = -DF_CPU=16000000UL -DNDEBUG
 
 CC      = avr-gcc
+SIZE    = avr-size
 OBJCOPY = avr-objcopy
 AVRDUDE = avrdude -c $(PROGRAMMER) -p $(DEVICE)
-CFLAGS  = -mmcu=$(DEVICE) -O1 -Wall -std=c99 -I . -I fatfs $(DEFINES)
+CFLAGS  = -mmcu=$(DEVICE) -Os -Wall -std=c99 -I . -I fatfs $(DEFINES)
 
 SOURCES = $(wildcard fatfs/options/*.c fatfs/*.c *.c)
 OBJECTS = $(patsubst %.c, %.o, $(SOURCES))
@@ -17,6 +18,7 @@ all: Makefile.deps $(TARGET).BIN
 
 $(TARGET).elf: $(OBJECTS)
 	$(CC) -mmcu=$(DEVICE) -o $@ $^
+	$(SIZE) --mcu=$(DEVICE) -C $(TARGET).elf
 
 $(TARGET).BIN: $(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
