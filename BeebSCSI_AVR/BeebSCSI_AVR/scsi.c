@@ -1963,14 +1963,8 @@ uint8_t scsiBeebScsiSense(void)
 	if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: Sending BSSENSE descriptor to host\r\n"));
 	
 	// Byte 0 shows the START/STOP status of each LUN (1 = started)
-	if (filesystemReadLunStatus(0)) lunStatus |= (1 << 0);
-	if (filesystemReadLunStatus(1)) lunStatus |= (1 << 1);
-	if (filesystemReadLunStatus(2)) lunStatus |= (1 << 2);
-	if (filesystemReadLunStatus(3)) lunStatus |= (1 << 3);
-	if (filesystemReadLunStatus(4)) lunStatus |= (1 << 4);
-	if (filesystemReadLunStatus(5)) lunStatus |= (1 << 5);
-	if (filesystemReadLunStatus(6)) lunStatus |= (1 << 6);
-	if (filesystemReadLunStatus(7)) lunStatus |= (1 << 7);
+        for (uint8_t i = 0; i < MAX_LUNS; i++)
+                if (filesystemReadLunStatus(i)) lunStatus |= (1 << i);
 	hostadapterWriteByte(lunStatus);
 	
 	if (debugFlag_scsiCommands) debugStringInt16_P(PSTR("SCSI Commands: LUN status byte = "), lunStatus, true);

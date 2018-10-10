@@ -98,7 +98,6 @@ void filesystemInitialise(void)
 // Reset the file system (called when the host signals reset)
 void filesystemReset(void)
 {
-	uint8_t lunNumber;
 	bool errorFlag = false;
 	
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemReset(): Resetting file system\r\n"));
@@ -113,7 +112,7 @@ void filesystemReset(void)
 		
 		// Test mounted LUNs to make sure they are still available
 		// Note: This is in case the SD card has been removed or changed since the last reset.
-		for (lunNumber = 0; lunNumber < 8; lunNumber++)
+		for (uint8_t lunNumber = 0; lunNumber < MAX_LUNS; lunNumber++)
 		{
 			// If the LUN status is available, test it to make sure
 			if (filesystemReadLunStatus(lunNumber))
@@ -155,14 +154,8 @@ bool filesystemMount(void)
 	}
 	
 	// Set all LUNs to stopped
-	filesystemSetLunStatus(0, false);
-	filesystemSetLunStatus(1, false);
-	filesystemSetLunStatus(2, false);
-	filesystemSetLunStatus(3, false);
-	filesystemSetLunStatus(4, false);
-	filesystemSetLunStatus(5, false);
-	filesystemSetLunStatus(6, false);
-	filesystemSetLunStatus(7, false);
+        for (uint8_t lunNumber = 0; lunNumber < MAX_LUNS; lunNumber++)
+                filesystemSetLunStatus(lunNumber, false);
 	
 	// Mount the SD card
 	filesystemState.fsResult = f_mount(&filesystemState.fsObject, "", 1);
@@ -225,14 +218,8 @@ bool filesystemDismount(void)
 	}
 	
 	// Set all LUNs to stopped
-	filesystemSetLunStatus(0, false);
-	filesystemSetLunStatus(1, false);
-	filesystemSetLunStatus(2, false);
-	filesystemSetLunStatus(3, false);
-	filesystemSetLunStatus(4, false);
-	filesystemSetLunStatus(5, false);
-	filesystemSetLunStatus(6, false);
-	filesystemSetLunStatus(7, false);
+        for (uint8_t lunNumber = 0; lunNumber < MAX_LUNS; lunNumber++)
+                filesystemSetLunStatus(lunNumber, false);
 	
 	// Dismount the SD card
 	filesystemState.fsResult = f_mount(&filesystemState.fsObject, "", 0);
@@ -998,14 +985,8 @@ void filesystemSetLunDirectory(uint8_t lunDirectoryNumber)
 	filesystemState.lunDirectory = lunDirectoryNumber;
 	
 	// Set all LUNs to stopped
-	filesystemSetLunStatus(0, false);
-	filesystemSetLunStatus(1, false);
-	filesystemSetLunStatus(2, false);
-	filesystemSetLunStatus(3, false);
-	filesystemSetLunStatus(4, false);
-	filesystemSetLunStatus(5, false);
-	filesystemSetLunStatus(6, false);
-	filesystemSetLunStatus(7, false);
+        for (uint8_t lunNumber = 0; lunNumber < MAX_LUNS; lunNumber++)
+                filesystemSetLunStatus(lunNumber, false);
 }
 
 // Function to read the current LUN directory (for the LUN jukeboxing functionality)
