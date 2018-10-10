@@ -41,30 +41,35 @@ struct filesystemStateStruct
 {
 	FATFS fsObject;			// FAT FS file system object
 	DIR dirObject;			// FAT FS directory object
-	FIL fileObject;			// FAT FS file objects
+        FIL fileObject;                 // FAT FS file object
 
 	FRESULT fsResult;		// FAT FS common result code
 	UINT fsCounter;			// FAT FS byte counter
 	FILINFO fsInfo;			// FAT FS file info object
 	
 	bool fsMountState;		// File system mount state (true = mounted, false = dismounted)
-	
 	uint8_t lunDirectory;	// Current LUN directory ID
-	bool fsLunStatus[8];	// LUN image availability flags for the currently selected LUN directory (true = started, false = stopped)
-	uint8_t fsLunUserCode[8][5];	// LUN 5-byte User code (used for F-Code interactions - only present for laser disc images)
 	
 } filesystemState;
+
+// LUN state structure
+struct lunStateStruct
+{
+        FIL fileObject;                              // Per-LUN file objects
+
+        uint8_t sectorBuffer[SECTOR_BUFFER_SIZE];    // Buffer for reading sectors
+        uint32_t sectorsInBuffer;
+        uint32_t currentBufferSector;
+        uint32_t sectorsRemaining;
+
+        bool status;                            // LUN image availability flags for the currently selected LUN directory (true = started, false = stopped)
+        uint8_t userCode[5];                    // LUN 5-byte User code (used for F-Code interactions - only present for laser disc images)
+} lunState[MAX_LUNS];
 
 char fileName[255];			// String for storing LFN filename
 char fatDirectory[255];		// String for storing FAT directory (for FAT transfer operations)
 
 uint8_t sectorBuffer[SECTOR_BUFFER_SIZE];	// Buffer for reading sectors
-bool lunOpenFlag = false; // Flag to track when a LUN is open for read/write (to prevent multiple file opens)
-
-// Globals for multi-sector reading
-uint32_t sectorsInBuffer = 0;
-uint32_t currentBufferSector = 0;
-uint32_t sectorsRemaining = 0;
 
 // Service FAT FS 100Hz system timer
 ISR(TIMER0_COMPA_vect)
@@ -268,12 +273,12 @@ bool filesystemDismount(void)
 bool filesystemSetLunStatus(uint8_t lunNumber, bool lunStatus)
 {
 	// Is the requested status the same as the current status?
-	if (filesystemState.fsLunStatus[lunNumber] == lunStatus)
+	if (lunState[lunNumber].status == lunStatus)
 	{
 		if (debugFlag_filesystem)
 		{
 			debugStringInt16_P(PSTR("File system: filesystemSetLunStatus(): LUN number "), (uint16_t)lunNumber, false);
-			if (filesystemState.fsLunStatus[lunNumber]) debugString_P(PSTR(" is started\r\n"));
+			if (lunState[lunNumber].status) debugString_P(PSTR(" is started\r\n"));
 			else debugString_P(PSTR(" is stopped\r\n"));
 		}
 		
@@ -281,7 +286,7 @@ bool filesystemSetLunStatus(uint8_t lunNumber, bool lunStatus)
 	}
 	
 	// Transitioning from stopped to started?
-	if (filesystemState.fsLunStatus[lunNumber] == false && lunStatus == true)
+	if (lunState[lunNumber].status == false && lunStatus == true)
 	{
 		// Is the file system mounted?
 		if (filesystemState.fsMountState == false)
@@ -311,7 +316,7 @@ bool filesystemSetLunStatus(uint8_t lunNumber, bool lunStatus)
 		}
 		
 		// Exit with success
-		filesystemState.fsLunStatus[lunNumber] = true;
+		lunState[lunNumber].status = true;
 		
 		if (debugFlag_filesystem)
 		{
@@ -323,11 +328,11 @@ bool filesystemSetLunStatus(uint8_t lunNumber, bool lunStatus)
 	}
 	
 	// Transitioning from started to stopped?
-	if (filesystemState.fsLunStatus[lunNumber] == true && lunStatus == false)
+	if (lunState[lunNumber].status == true && lunStatus == false)
 	{
 		// If the LUN image is stopping the file system doesn't need to do anything other
 		// than note the change of status
-		filesystemState.fsLunStatus[lunNumber] = false;
+		lunState[lunNumber].status = false;
 		
 		if (debugFlag_filesystem)
 		{
@@ -345,13 +350,13 @@ bool filesystemSetLunStatus(uint8_t lunNumber, bool lunStatus)
 // Function to read the status of a LUN image
 bool filesystemReadLunStatus(uint8_t lunNumber)
 {
-	return filesystemState.fsLunStatus[lunNumber];
+	return lunState[lunNumber].status;
 }
 
 // Function to confirm that a LUN image is still available
 bool filesystemTestLunStatus(uint8_t lunNumber)
 {
-	if (filesystemState.fsLunStatus[lunNumber] == true)
+	if (lunState[lunNumber].status == true)
 	{
 		// Check that the LUN image exists
 		if (!filesystemCheckLunImage(lunNumber))
@@ -375,11 +380,11 @@ bool filesystemTestLunStatus(uint8_t lunNumber)
 // Function to read the user code for the specified LUN image
 void filesystemReadLunUserCode(uint8_t lunNumber, uint8_t userCode[5])
 {
-	userCode[0] = filesystemState.fsLunUserCode[lunNumber][0];
-	userCode[1] = filesystemState.fsLunUserCode[lunNumber][1];
-	userCode[2] = filesystemState.fsLunUserCode[lunNumber][2];
-	userCode[3] = filesystemState.fsLunUserCode[lunNumber][3];
-	userCode[4] = filesystemState.fsLunUserCode[lunNumber][4];
+	userCode[0] = lunState[lunNumber].userCode[0];
+	userCode[1] = lunState[lunNumber].userCode[1];
+	userCode[2] = lunState[lunNumber].userCode[2];
+	userCode[3] = lunState[lunNumber].userCode[3];
+	userCode[4] = lunState[lunNumber].userCode[4];
 }
 
 // Check that the currently selected LUN directory exists (and, if not, create it)
@@ -660,11 +665,11 @@ bool filesystemCheckLunImage(uint8_t lunNumber)
 		f_close(&filesystemState.fileObject);
 		
 		// Set the user code descriptor to the default (probably not a laser disc image)
-		filesystemState.fsLunUserCode[lunNumber][0] = 0x00;
-		filesystemState.fsLunUserCode[lunNumber][1] = 0x00;
-		filesystemState.fsLunUserCode[lunNumber][2] = 0x00;
-		filesystemState.fsLunUserCode[lunNumber][3] = 0x00;
-		filesystemState.fsLunUserCode[lunNumber][4] = 0x00;
+		lunState[lunNumber].userCode[0] = 0x00;
+		lunState[lunNumber].userCode[1] = 0x00;
+		lunState[lunNumber].userCode[2] = 0x00;
+		lunState[lunNumber].userCode[3] = 0x00;
+		lunState[lunNumber].userCode[4] = 0x00;
 	}
 	else
 	{
@@ -954,7 +959,7 @@ void filesystemGetUserCodeFromUcd(uint8_t lunDirectoryNumber, uint8_t lunNumber)
 	if (filesystemState.fsResult == FR_OK)
 	{
 		// Read the DSC data
-		filesystemState.fsResult = f_read(&filesystemState.fileObject, filesystemState.fsLunUserCode[lunNumber], 5, &fsCounter);
+		filesystemState.fsResult = f_read(&filesystemState.fileObject, lunState[lunNumber].userCode, 5, &fsCounter);
 		
 		// Check that the file was read OK and is the correct length
 		if (filesystemState.fsResult != FR_OK  && fsCounter == 5)
@@ -967,11 +972,11 @@ void filesystemGetUserCodeFromUcd(uint8_t lunDirectoryNumber, uint8_t lunNumber)
 
 	if (debugFlag_filesystem)
 	{
-		debugStringInt16_P(PSTR("File system: filesystemGetUserCodeFromUcd(): User code bytes (from .ucd): "), (uint16_t)filesystemState.fsLunUserCode[lunNumber][0], false);
-		debugStringInt16_P(PSTR(", "), (uint16_t)filesystemState.fsLunUserCode[lunNumber][1], false);
-		debugStringInt16_P(PSTR(", "), (uint16_t)filesystemState.fsLunUserCode[lunNumber][2], false);
-		debugStringInt16_P(PSTR(", "), (uint16_t)filesystemState.fsLunUserCode[lunNumber][3], false);
-		debugStringInt16_P(PSTR(", "), (uint16_t)filesystemState.fsLunUserCode[lunNumber][4], true);
+		debugStringInt16_P(PSTR("File system: filesystemGetUserCodeFromUcd(): User code bytes (from .ucd): "), (uint16_t)lunState[lunNumber].userCode[0], false);
+		debugStringInt16_P(PSTR(", "), (uint16_t)lunState[lunNumber].userCode[1], false);
+		debugStringInt16_P(PSTR(", "), (uint16_t)lunState[lunNumber].userCode[2], false);
+		debugStringInt16_P(PSTR(", "), (uint16_t)lunState[lunNumber].userCode[3], false);
+		debugStringInt16_P(PSTR(", "), (uint16_t)lunState[lunNumber].userCode[4], true);
 	}
 
 		f_close(&filesystemState.fileObject);
@@ -1150,7 +1155,7 @@ bool filesystemFormatLun(uint8_t lunNumber, uint8_t dataPattern)
 	// sectors = tracks * 33
 	requiredNumberOfSectors = ((uint32_t)sectorBuffer[15] * (((uint32_t)sectorBuffer[13] << 8) + (uint32_t)sectorBuffer[14])) * 33;
 	if (debugFlag_filesystem) debugStringInt32_P(PSTR("File system: filesystemFormatLun(): Sectors required = "), requiredNumberOfSectors, true);
-	
+
 	// Assemble the .dat file name
 	sprintf(fileName, "/BeebSCSI%d/scsi%d.dat", filesystemState.lunDirectory, lunNumber);
 	
@@ -1214,31 +1219,24 @@ bool filesystemFormatLun(uint8_t lunNumber, uint8_t dataPattern)
 bool filesystemOpenLunForRead(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors)
 {
 	uint32_t sectorsToRead = 0;
-	
-	// Ensure there isn't already a LUN image open
-	if (lunOpenFlag)
-	{
-		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForRead(): ERROR: LUN image already open!\r\n"));
-		return false;	
-	}
-	
+
 	// Assemble the .dat file name
 	sprintf(fileName, "/BeebSCSI%d/scsi%d.dat", filesystemState.lunDirectory, lunNumber);
 
 	// Open the DAT file
-	filesystemState.fsResult = f_open(&filesystemState.fileObject, fileName, FA_READ);
+	filesystemState.fsResult = f_open(&lunState[lunNumber].fileObject, fileName, FA_READ);
 	if (filesystemState.fsResult == FR_OK)
 	{
 		// Move to the correct point in the DAT file
 		// This is * 256 as each block is 256 bytes
-		filesystemState.fsResult = f_lseek(&filesystemState.fileObject, startSector * 256);
+		filesystemState.fsResult = f_lseek(&lunState[lunNumber].fileObject, startSector * 256);
 
 		// Check that the file seek was OK
 		if (filesystemState.fsResult != FR_OK)
 		{
 			// Something went wrong with seeking, do not retry
 			if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForRead(): ERROR: Unable to seek to required sector in LUN image file!\r\n"));
-			f_close(&filesystemState.fileObject);
+			f_close(&lunState[lunNumber].fileObject);
 			return false;
 		}
 	}
@@ -1247,73 +1245,72 @@ bool filesystemOpenLunForRead(uint8_t lunNumber, uint32_t startSector, uint32_t 
 	sectorsToRead = requiredNumberOfSectors;
 	if (sectorsToRead > SECTOR_BUFFER_LENGTH) sectorsToRead = SECTOR_BUFFER_LENGTH;
 	
-	sectorsInBuffer = sectorsToRead;
-	currentBufferSector = 0;
-	sectorsRemaining = requiredNumberOfSectors - sectorsInBuffer;
+	lunState[lunNumber].sectorsInBuffer = sectorsToRead;
+	lunState[lunNumber].currentBufferSector = 0;
+	lunState[lunNumber].sectorsRemaining = requiredNumberOfSectors - lunState[lunNumber].sectorsInBuffer;
 	
 	// Read the required data into the sector buffer
-	filesystemState.fsResult = f_read(&filesystemState.fileObject, sectorBuffer, sectorsToRead * 256, &filesystemState.fsCounter);
+	filesystemState.fsResult = f_read(&lunState[lunNumber].fileObject, lunState[lunNumber].sectorBuffer, sectorsToRead * 256, &filesystemState.fsCounter);
 	
 	// Check that the file was read OK
 	if (filesystemState.fsResult != FR_OK)
 	{
 		// Something went wrong
 		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemReadNextSector(): ERROR: Cannot read from LUN image!\r\n"));
-		f_close(&filesystemState.fileObject);
+		f_close(&lunState[lunNumber].fileObject);
 		return false;
 	}
 
 	// Exit with success
-	lunOpenFlag = true;
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForRead(): Successful\r\n"));
 	return true;
 }
 
 // Function to read next sector from a LUN
-bool filesystemReadNextSector(uint8_t buffer[])
+bool filesystemReadNextSector(uint8_t lunNumber, uint8_t buffer[])
 {
 	//uint16_t byteCounter;
 	uint32_t sectorsToRead = 0;
 	
 	// Ensure there is a LUN image open
-	if (!lunOpenFlag)
+	if (!lunState[lunNumber].status)
 	{
-		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemReadNextSector(): ERROR: No LUN image open!\r\n"));
+		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemReadNextSector(): ERROR: LUN image not open!\r\n"));
 		return false;
 	}
 	
 	// Is the required sector already in the sector buffer?
-	if (currentBufferSector < sectorsInBuffer)
+	if (lunState[lunNumber].currentBufferSector < lunState[lunNumber].sectorsInBuffer)
 	{
 		// Fill the function buffer from the sector buffer
-		memcpy(buffer, sectorBuffer + (currentBufferSector * 256), 256);
+		memcpy(buffer, lunState[lunNumber].sectorBuffer + (lunState[lunNumber].currentBufferSector * 256), 256);
 		
 		// Move to the next sector
-		currentBufferSector++;
+		lunState[lunNumber].currentBufferSector++;
 	}
 	
 	// Refill the sector buffer?
-	if (currentBufferSector == sectorsInBuffer)
+	if (lunState[lunNumber].currentBufferSector == lunState[lunNumber].sectorsInBuffer)
 	{
 		// Ensure we have sectors remaining to be read
-		if (sectorsRemaining != 0)
+		if (lunState[lunNumber].sectorsRemaining != 0)
 		{
-			sectorsToRead = sectorsRemaining;
-			if (sectorsRemaining > SECTOR_BUFFER_LENGTH) sectorsToRead = SECTOR_BUFFER_LENGTH;
+			sectorsToRead = lunState[lunNumber].sectorsRemaining;
+			if (lunState[lunNumber].sectorsRemaining > SECTOR_BUFFER_LENGTH) sectorsToRead = SECTOR_BUFFER_LENGTH;
 			
-			sectorsInBuffer = sectorsToRead;
-			currentBufferSector = 0;
-			sectorsRemaining = sectorsRemaining - sectorsInBuffer;
+			lunState[lunNumber].sectorsInBuffer = sectorsToRead;
+			lunState[lunNumber].currentBufferSector = 0;
+			lunState[lunNumber].sectorsRemaining = lunState[lunNumber].sectorsRemaining - lunState[lunNumber].sectorsInBuffer;
 			
 			// Read the required data into the sector buffer
-			filesystemState.fsResult = f_read(&filesystemState.fileObject, sectorBuffer, sectorsToRead * 256, &filesystemState.fsCounter);
+			filesystemState.fsResult = f_read(&lunState[lunNumber].fileObject, lunState[lunNumber].sectorBuffer, sectorsToRead * 256, &filesystemState.fsCounter);
 			
 			// Check that the file was read OK
 			if (filesystemState.fsResult != FR_OK)
 			{
 				// Something went wrong
 				if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemReadNextSector(): ERROR: Cannot read from LUN image!\r\n"));
-				f_close(&filesystemState.fileObject);
+                                f_close(&lunState[lunNumber].fileObject);
 				return false;
 			}
 		}
@@ -1324,18 +1321,17 @@ bool filesystemReadNextSector(uint8_t buffer[])
 }
 
 // Function to close a LUN for reading
-bool filesystemCloseLunForRead(void)
+bool filesystemCloseLunForRead(uint8_t lunNumber)
 {
 	// Ensure there is a LUN image open
-	if (!lunOpenFlag)
+	if (!lunState[lunNumber].status)
 	{
-		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemCloseLunForRead(): ERROR: No LUN image open!\r\n"));
+		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemCloseLunForRead(): ERROR: LUN image not open!\r\n"));
 		return false;
 	}
 	
 	// Close the open file object
-	f_close(&filesystemState.fileObject);
-	lunOpenFlag = false;
+	f_close(&lunState[lunNumber].fileObject);
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemCloseLunForRead(): Completed\r\n"));
 	return false;
 }
@@ -1343,59 +1339,50 @@ bool filesystemCloseLunForRead(void)
 // Function to open a LUN ready for writing
 bool filesystemOpenLunForWrite(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors)
 {
-	// Ensure there isn't already a LUN image open
-	if (lunOpenFlag)
-	{
-		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForWrite(): ERROR: LUN image already open!\r\n"));
-		return false;
-	}
-	
 	// Assemble the .dat file name
 	sprintf(fileName, "/BeebSCSI%d/scsi%d.dat", filesystemState.lunDirectory, lunNumber);
 
 	// Open the DAT file
-	filesystemState.fsResult = f_open(&filesystemState.fileObject, fileName,  FA_READ | FA_WRITE);
+	filesystemState.fsResult = f_open(&lunState[lunNumber].fileObject, fileName,  FA_READ | FA_WRITE);
 	if (filesystemState.fsResult == FR_OK)
 	{
 		// Move to the correct point in the DAT file
 		// This is * 256 as each block is 256 bytes
-		filesystemState.fsResult = f_lseek(&filesystemState.fileObject, startSector * 256);
+		filesystemState.fsResult = f_lseek(&lunState[lunNumber].fileObject, startSector * 256);
 
 		// Check that the file seek was OK
 		if (filesystemState.fsResult != FR_OK)
 		{
 			// Something went wrong with seeking, do not retry
 			if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForWrite(): ERROR: Unable to seek to required sector in LUN image file!\r\n"));
-			f_close(&filesystemState.fileObject);
+			f_close(&lunState[lunNumber].fileObject);
 			return false;
 		}
 	}
 
-	// Exit with success
-	lunOpenFlag = true;
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForWrite(): Successful\r\n"));
 	return true;
 }
 
 // Function to write next sector to a LUN
-bool filesystemWriteNextSector(uint8_t buffer[])
+bool filesystemWriteNextSector(uint8_t lunNumber, uint8_t buffer[])
 {
 	// Ensure there is a LUN image open
-	if (!lunOpenFlag)
+	if (!lunState[lunNumber].status)
 	{
-		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemWriteNextSector(): ERROR: No LUN image open!\r\n"));
+		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemWriteNextSector(): ERROR: LUN image not open!\r\n"));
 		return false;
 	}
 	
 	// Write the required data
-	filesystemState.fsResult = f_write(&filesystemState.fileObject, buffer, 256, &filesystemState.fsCounter);
+	filesystemState.fsResult = f_write(&lunState[lunNumber].fileObject, buffer, 256, &filesystemState.fsCounter);
 	
 	// Check that the file was written OK
 	if (filesystemState.fsResult != FR_OK)
 	{
 		// Something went wrong
 		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemWriteNextSector(): ERROR: Cannot write to LUN image!\r\n"));
-		f_close(&filesystemState.fileObject);
+		f_close(&lunState[lunNumber].fileObject);
 		return false;
 	}
 	
@@ -1404,18 +1391,17 @@ bool filesystemWriteNextSector(uint8_t buffer[])
 }
 
 // Function to close a LUN for writing
-bool filesystemCloseLunForWrite(void)
+bool filesystemCloseLunForWrite(uint8_t lunNumber)
 {
 	// Ensure there is a LUN image open
-	if (!lunOpenFlag)
+	if (!lunState[lunNumber].status)
 	{
-		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemCloseLunForWrite(): ERROR: No LUN image open!\r\n"));
+		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemCloseLunForWrite(): ERROR: LUN image not open!\r\n"));
 		return false;
 	}
 	
 	// Close the open file object
-	f_close(&filesystemState.fileObject);
-	lunOpenFlag = false;
+	f_close(&lunState[lunNumber].fileObject);
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemCloseLunForWrite(): Completed\r\n"));
 	return false;
 }
