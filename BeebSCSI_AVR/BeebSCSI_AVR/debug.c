@@ -24,11 +24,7 @@
 
 ************************************************************************/
 
-#include <avr/io.h>
-#include <avr/pgmspace.h>
-#include <stdbool.h>
-#include <stdio.h>
-
+#include "beebscsi.h"
 #include "debug.h"
 #include "uart.h"
 #include "scsi.h"

@@ -24,13 +24,7 @@
 
 ************************************************************************/
 
-// Global includes
-#include <avr/io.h>
-#include <avr/pgmspace.h>
-#include <stdbool.h>
-#include <stdio.h>
-
-// Local includes
+#include "beebscsi.h"
 #include "uart.h"
 #include "debug.h"
 #include "filesystem.h"

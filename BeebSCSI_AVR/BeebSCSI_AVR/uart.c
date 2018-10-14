@@ -24,12 +24,7 @@
 
 ************************************************************************/
 
-#include <avr/io.h>
-#include <avr/interrupt.h>
-#include <stdio.h>
-#include <stdbool.h>
-
-// Local includes
+#include "beebscsi.h"
 #include "uart.h"
 
 #define UART_BAUDRATE 57600

@@ -24,16 +24,9 @@
 
 ************************************************************************/
 
-#include <avr/io.h>
-#include <avr/pgmspace.h>
-#include <avr/interrupt.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <string.h>
-
+#include "beebscsi.h"
 #include "debug.h"
 #include "fatfs/ff.h"
-#include "fatfs/mmc_avr.h"
 #include "filesystem.h"
 
 // File system state structure
@@ -71,11 +64,13 @@ char fatDirectory[255];		// String for storing FAT directory (for FAT transfer o
 
 uint8_t sectorBuffer[SECTOR_BUFFER_SIZE];	// Buffer for reading sectors
 
+#ifdef __AVR
 // Service FAT FS 100Hz system timer
 ISR(TIMER0_COMPA_vect)
 {
 	mmc_disk_timerproc();
 }
+#endif
 
 // Function to initialise the file system control functions (called on a cold-start of the AVR)
 void filesystemInitialise(void)
@@ -83,17 +78,19 @@ void filesystemInitialise(void)
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemInitialise(): Initialising file system\r\n"));
 	filesystemState.lunDirectory = 0;		// Default to LUN directory 0
 	filesystemState.fsMountState = false;	// FS default state is unmounted
-	
+
+#ifdef __AVR
 	// Enable Timer0 running at 100Hz for the FAT FS library
 	OCR0A = F_CPU / 1024 / 100 - 1;
 	TCCR0A = (1 << WGM01);
 	TCCR0B = 5; // 0b101
 	TIMSK0 = (1 << OCIE0A);
+#endif
 	
 	// Enable interrupts globally
 	sei();
-	
-	// Mount the file system
+
+        // Mount the file system
 	filesystemMount();
 	
 	// Set the default FAT transfer directory
