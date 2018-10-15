@@ -702,7 +702,7 @@ bool filesystemCheckLunImage(uint8_t lunNumber)
 uint32_t filesystemGetLunSizeFromDsc(uint8_t lunDirectory, uint8_t lunNumber)
 {
 	uint32_t lunSize = 0;
-	uint16_t fsCounter;
+	unsigned int fsCounter;
 	
 	uint32_t blockSize;
 	uint32_t cylinderCount;
@@ -758,7 +758,7 @@ bool filesystemCreateDscFromLunImage(uint8_t lunDirectory, uint8_t lunNumber, ui
 {
 	uint32_t cylinders;
 	uint32_t heads;
-	uint16_t fsCounter;
+	unsigned int fsCounter;
 	
 	// Calculate the LUN file size in tracks (33 sectors per track, 256 bytes per sector)
 	
@@ -960,7 +960,7 @@ bool filesystemCreateDscFromLunImage(uint8_t lunDirectory, uint8_t lunNumber, ui
 // Function to read the user code data from the LUN user code descriptor file (.ucd)
 void filesystemGetUserCodeFromUcd(uint8_t lunDirectoryNumber, uint8_t lunNumber)
 {
-	uint16_t fsCounter;
+	unsigned int fsCounter;
 	
 	// Assemble the UCD file name
 	sprintf(fileName, "/BeebSCSI%d/scsi%d.ucd", lunDirectoryNumber, lunNumber);
@@ -1768,7 +1768,7 @@ bool filesystemOpenFatForRead(uint32_t fileNumber, uint32_t blockNumber)
 // Read the next block from a FAT file
 bool filesystemReadNextFatBlock(uint8_t *buffer)
 {
-	uint16_t byteCounter = 0;
+	unsigned int byteCounter = 0;
 	
 	// Clear the buffer
 	for (byteCounter = 0; byteCounter < 256; byteCounter++) buffer[byteCounter] = 0;
