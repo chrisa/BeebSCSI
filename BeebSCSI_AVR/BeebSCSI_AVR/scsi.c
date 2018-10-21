@@ -832,7 +832,7 @@ uint8_t scsiCommandFormat(void)
 		// Read the defect list header
 		if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: Defect list header:\r\n"));
 		for (byteCounter = 0; byteCounter < 4; byteCounter++)
-		scsiSectorBuffer[byteCounter] = hostadapterReadByte();
+                        scsiSectorBuffer[byteCounter] = hostadapterReadByte();
 		
 		defectListLength = (((uint32_t)scsiSectorBuffer[2] << 8) + (uint32_t)scsiSectorBuffer[3]) / 8;
 		if (debugFlag_scsiCommands) debugStringInt16_P(PSTR("SCSI Commands:   Length = "), defectListLength,true);
@@ -842,7 +842,7 @@ uint8_t scsiCommandFormat(void)
 		{
 			// Read the defect data
 			for (byteCounter = 0; byteCounter < 8; byteCounter++)
-			scsiSectorBuffer[byteCounter] = hostadapterReadByte();
+                                scsiSectorBuffer[byteCounter] = hostadapterReadByte();
 			
 			// Output defect to debug
 			if (debugFlag_scsiCommands) debugStringInt16_P(PSTR("SCSI Commands: Defect #"), defectListRecords,true);
@@ -998,9 +998,10 @@ uint8_t scsiCommandRead6(void)
 	if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: Transferring requested blocks to the host...\r\n"));
 	for (currentBlock = 0; currentBlock < numberOfBlocks; currentBlock++)
 	{
+                uint8_t *buffer;
 
 		// Read the requested block from the LUN image
-		if(!filesystemReadNextSector(commandDataBlock.targetLUN, scsiSectorBuffer))
+		if(!filesystemReadNextSector(commandDataBlock.targetLUN, &buffer))
 		{
 			// Reading from the LUN image failed... try to recover with a little grace...
 			if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: ERROR: Could not read next sector from LUN image!\r\n"));
@@ -1022,7 +1023,7 @@ uint8_t scsiCommandRead6(void)
 		
 		// Send the data to the host
 		cli();
-		bytesTransferred = hostadapterPerformReadDMA(scsiSectorBuffer);
+		bytesTransferred = hostadapterPerformReadDMA(buffer);
 		sei();
 		
 		// Check for a host reset condition
@@ -1044,7 +1045,7 @@ uint8_t scsiCommandRead6(void)
 			if (debugFlag_scsiBlocks)
 			{
 				debugStringInt32_P(PSTR("Hex dump for block #"), currentBlock, true);
-				debugSectorBufferHex(scsiSectorBuffer, 256);
+				debugSectorBufferHex(buffer, 256);
 			}
 		}
 	}
@@ -1078,9 +1079,11 @@ uint8_t scsiCommandWrite6(void)
 	uint32_t logicalBlockAddress = 0;
 	uint32_t numberOfBlocks = 0;
 	uint32_t currentBlock = 0;
-	
 	uint16_t bytesTransferred = 0;
 	
+        // Buffer pointer for write DMA
+        uint8_t *buffer;
+
 	if (debugFlag_scsiCommands)
 	{
 		debugString_P(PSTR("SCSI Commands: WRITE command (0x0A) received\r\n"));
@@ -1137,9 +1140,9 @@ uint8_t scsiCommandWrite6(void)
 	
 	// Set up the control signals ready for the data out phase
 	scsiInformationTransferPhase(ITPHASE_DATAOUT);
-	
+
 	// Seek the required LUN image for writing
-	if(!filesystemSeekLunForWrite(commandDataBlock.targetLUN, logicalBlockAddress, numberOfBlocks))
+	if(!filesystemSeekLunForWrite(commandDataBlock.targetLUN, logicalBlockAddress, numberOfBlocks, &buffer))
 	{
 		// Seeking in the LUN image failed... try to recover with a little grace...
 		if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Command: ERROR: Could not open LUN image for writing!\r\n"));
@@ -1165,7 +1168,7 @@ uint8_t scsiCommandWrite6(void)
 	{
 		// Get the data from the host
 		cli();
-		bytesTransferred = hostadapterPerformWriteDMA(scsiSectorBuffer);
+		bytesTransferred = hostadapterPerformWriteDMA(buffer);
 		sei();
 		
 		// Check for a host reset condition
@@ -1176,7 +1179,7 @@ uint8_t scsiCommandWrite6(void)
 		}
 		
 		// Write the requested block to the LUN image
-		if(!filesystemWriteNextSector(commandDataBlock.targetLUN, scsiSectorBuffer))
+		if(!filesystemWriteNextSector(commandDataBlock.targetLUN))
 		{
 			// Writing to the LUN image failed... try to recover with a little grace...
 			if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: ERROR: Writing to LUN image failed!\r\n"));
@@ -1207,7 +1210,7 @@ uint8_t scsiCommandWrite6(void)
 			if (debugFlag_scsiBlocks)
 			{
 				debugStringInt32_P(PSTR("Hex dump for block #"), currentBlock, true);
-				debugSectorBufferHex(scsiSectorBuffer, 256);
+				debugSectorBufferHex(buffer, 256);
 			}
 		}
 	}
@@ -1476,7 +1479,7 @@ uint8_t scsiCommandModeSelect(void)
 	
 	// Read the 22 byte descriptor from the host
 	for (byteCounter = 0; byteCounter < commandDataBlock.data[4]; byteCounter++)
-	scsiSectorBuffer[byteCounter] = hostadapterReadByte();
+                scsiSectorBuffer[byteCounter] = hostadapterReadByte();
 	
 	// Output the geometry to debug
 	// TODO!
@@ -1558,7 +1561,7 @@ uint8_t scsiCommandModeSense(void)
 		// Transfer the DSC contents
 		if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: Sending LUN descriptor to host\r\n"));
 		for (byteCounter = 0; byteCounter < 22; byteCounter++)
-		hostadapterWriteByte(scsiSectorBuffer[byteCounter]);
+                        hostadapterWriteByte(scsiSectorBuffer[byteCounter]);
 	}
 	else
 	{
@@ -2082,9 +2085,7 @@ uint8_t scsiBeebScsiFatPath(void)
 	// Set up the control signals ready for the data out phase
 	scsiInformationTransferPhase(ITPHASE_DATAOUT);
 
-	// Transfer a single block from the file system to the host
-	// Note: Since VFS is slower than ADFS we do not disable interrupts here as
-	// disabling interrupts can cause incoming serial bytes to be lost
+	// Transfer a single block from the host, as the new FAT path
 	if (debugFlag_scsiCommands) debugString_P(PSTR("SCSI Commands: Transferring FAT path buffer from the host...\r\n"));
 	cli();
 	bytesTransferred = hostadapterPerformWriteDMA(scsiSectorBuffer);

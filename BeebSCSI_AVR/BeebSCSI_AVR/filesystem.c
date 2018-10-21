@@ -1277,7 +1277,7 @@ bool filesystemSeekLunForRead(uint8_t lunNumber, uint32_t startSector, uint32_t 
 }
 
 // Function to read next sector from a LUN
-bool filesystemReadNextSector(uint8_t lunNumber, uint8_t buffer[])
+bool filesystemReadNextSector(uint8_t lunNumber, uint8_t **buffer)
 {
 	//uint16_t byteCounter;
 	uint32_t sectorsToRead = 0;
@@ -1288,19 +1288,9 @@ bool filesystemReadNextSector(uint8_t lunNumber, uint8_t buffer[])
 		if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemReadNextSector(): ERROR: LUN image not open!\r\n"));
 		return false;
 	}
-	
-	// Is the required sector already in the sector buffer?
-	if (lunState[lunNumber].currentBufferSector < lunState[lunNumber].sectorsInBuffer)
-	{
-		// Fill the function buffer from the sector buffer
-		memcpy(buffer, lunState[lunNumber].sectorBuffer + (lunState[lunNumber].currentBufferSector * 256), 256);
-		
-		// Move to the next sector
-		lunState[lunNumber].currentBufferSector++;
-	}
-	
+
 	// Refill the sector buffer?
-	if (lunState[lunNumber].currentBufferSector == lunState[lunNumber].sectorsInBuffer)
+	if (lunState[lunNumber].currentBufferSector > (lunState[lunNumber].sectorsInBuffer - 1))
 	{
 		// Ensure we have sectors remaining to be read
 		if (lunState[lunNumber].sectorsRemaining != 0)
@@ -1325,8 +1315,14 @@ bool filesystemReadNextSector(uint8_t lunNumber, uint8_t buffer[])
 			}
 		}
 	}
-	
-	// Exit with success
+
+        // Assign the buffer pointer from the sector buffer
+        *buffer = lunState[lunNumber].sectorBuffer + (lunState[lunNumber].currentBufferSector * 256);
+
+        // Move to the next sector
+        lunState[lunNumber].currentBufferSector++;
+
+        // Exit with success
 	return true;
 }
 
@@ -1347,7 +1343,7 @@ bool filesystemCloseLunImage(uint8_t lunNumber)
 }
 
 // Function to seek a LUN ready for writing
-bool filesystemSeekLunForWrite(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors)
+bool filesystemSeekLunForWrite(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors, uint8_t **buffer)
 {
         // Move to the correct point in the DAT file
         // This is * 256 as each block is 256 bytes
@@ -1362,12 +1358,16 @@ bool filesystemSeekLunForWrite(uint8_t lunNumber, uint32_t startSector, uint32_t
                 return false;
         }
 
+        // Set up the buffer pointer to use the LUN sectorBuffer
+        lunState[lunNumber].currentBufferSector = lunState[lunNumber].sectorsInBuffer; // ensure the next read6 refills this buffer
+        *buffer = lunState[lunNumber].sectorBuffer;
+
 	if (debugFlag_filesystem) debugString_P(PSTR("File system: filesystemOpenLunForWrite(): Successful\r\n"));
 	return true;
 }
 
 // Function to write next sector to a LUN
-bool filesystemWriteNextSector(uint8_t lunNumber, uint8_t buffer[])
+bool filesystemWriteNextSector(uint8_t lunNumber)
 {
 	// Ensure there is a LUN image open
 	if (!lunState[lunNumber].status)
@@ -1377,7 +1377,7 @@ bool filesystemWriteNextSector(uint8_t lunNumber, uint8_t buffer[])
 	}
 	
 	// Write the required data
-	filesystemState.fsResult = f_write(&lunState[lunNumber].fileObject, buffer, 256, &filesystemState.fsCounter);
+	filesystemState.fsResult = f_write(&lunState[lunNumber].fileObject, lunState[lunNumber].sectorBuffer, 256, &filesystemState.fsCounter);
 	
 	// Check that the file was written OK
 	if (filesystemState.fsResult != FR_OK)

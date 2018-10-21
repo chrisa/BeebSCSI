@@ -65,9 +65,9 @@ bool filesystemWriteLunDescriptor(uint8_t lunNumber, uint8_t buffer[]);
 bool filesystemFormatLun(uint8_t lunNumber, uint8_t dataPattern);
 
 bool filesystemSeekLunForRead(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors);
-bool filesystemReadNextSector(uint8_t lunNumber, uint8_t buffer[]);
-bool filesystemSeekLunForWrite(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors);
-bool filesystemWriteNextSector(uint8_t lunNumber, uint8_t buffer[]);
+bool filesystemReadNextSector(uint8_t lunNumber, uint8_t **buffer);
+bool filesystemSeekLunForWrite(uint8_t lunNumber, uint32_t startSector, uint32_t requiredNumberOfSectors, uint8_t **buffer);
+bool filesystemWriteNextSector(uint8_t lunNumber);
 bool filesystemOpenLunImage(uint8_t lunNumber);
 bool filesystemCloseLunImage(uint8_t lunNumber);
 

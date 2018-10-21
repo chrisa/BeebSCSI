@@ -7,6 +7,9 @@
 #include "scsi.h"
 #include "usb.h"
 
+#define NTESTS 256
+#define NBLOCKS 256
+
 uint8_t command[10] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 extern uint8_t *loadedCommand;
 
@@ -37,7 +40,7 @@ void setLUNBlockAddress(uint8_t targetLUN, uint32_t logicalBlockAddress, uint32_
         command[1] = ((targetLUN << 5) & 0xe0) | ((logicalBlockAddress >> 16) & 0x1f);
         command[2] = (uint8_t) (logicalBlockAddress >> 8);
         command[3] = (uint8_t) logicalBlockAddress;
-        command[4] = (uint8_t) numberOfBlocks;
+        command[4] = (uint8_t) (numberOfBlocks == 256 ? 0 : numberOfBlocks);
 }
 
 uint8_t *readCommand(uint8_t targetLUN, uint32_t logicalBlockAddress, uint32_t numberOfBlocks)
@@ -63,18 +66,18 @@ void fillBuffer(uint8_t *buffer, uint32_t logicalBlockAddress)
 
 int writeAndRead(uint32_t logicalBlockAddress)
 {
-        uint8_t written[16][DMA_SIZE];
+        uint8_t written[NBLOCKS][DMA_SIZE];
 
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < NBLOCKS; i++)
         {
                 fillBuffer(hostBuffers[i], logicalBlockAddress + i);
                 memcpy(written[i], hostBuffers[i], DMA_SIZE);
         }
-        runCommand(writeCommand(0, logicalBlockAddress, 16));
-        runCommand(readCommand(0, logicalBlockAddress, 16));
+        runCommand(writeCommand(0, logicalBlockAddress, NBLOCKS));
+        runCommand(readCommand(0, logicalBlockAddress, NBLOCKS));
 
         int total = 0;
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < NBLOCKS; i++)
         {
                 total += memcmp(written[i], hostBuffers[i], DMA_SIZE);
         }
@@ -89,13 +92,13 @@ int main(void)
 	// Initialise the SCSI emulation
 	scsiInitialise();
 
-#define NTESTS 16
-
         printf("1..%d\n", NTESTS);
-        for (int i = 0; i < NTESTS; i++)
+        int test = 0;
+
+        for (int i = 0; i < NTESTS * 256; i += 256)
         {
                 if ((writeAndRead(i)) != 0)
                         printf("not ");
-                printf("ok %d - read and write 16 sectors from sector %d\n", i, i);
+                printf("ok %d - read and write %d blocks from block %d\n", ++test, NBLOCKS, i);
         }
 }
