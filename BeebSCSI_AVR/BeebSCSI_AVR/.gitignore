@@ -9,6 +9,7 @@ tap/prove
 Makefile.deps
 BEEBSCSI.elf
 BEEBSCSI.BIN
+BeebSCSI_FAT.dmg
 
 # User-specific files
 *.suo

@@ -22,8 +22,12 @@ OBJECTS = $(patsubst %.c, %.o, $(SOURCES))
 
 all: Makefile.deps $(TARGET).BIN
 
-test: prove Makefile.deps $(TARGET).elf
+test: prove Makefile.deps $(TARGET).elf BeebSCSI_FAT.dmg
 	./tap/prove ./$(TARGET).elf 2> /dev/null
+
+BeebSCSI_FAT.dmg:
+	rm -f $@
+	mkfs.fat -C $@ 550000
 
 -include Makefile.deps
 
